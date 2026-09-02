@@ -348,7 +348,7 @@ describe("CursorACPAgentClient per-model thinking options", () => {
     expect(setSessionConfigOption).not.toHaveBeenCalled();
   });
 
-  test("keeps a model's default thinking options when its probe fails", async () => {
+  test("omits thinking options when a model's probe fails instead of keeping another model's list", async () => {
     const setSessionConfigOption = vi.fn(async ({ value }: { value: string }) => {
       if (value === "grok-4.6") {
         throw new Error("probe rejected model switch");
@@ -383,10 +383,53 @@ describe("CursorACPAgentClient per-model thinking options", () => {
       force: false,
     });
 
+    const haiku = catalog.models.find((model) => model.id === "claude-haiku-4-5");
     const grok = catalog.models.find((model) => model.id === "grok-4.6");
-    expect(grok?.thinkingOptions).toEqual([
+    expect(haiku?.thinkingOptions).toEqual([
       expect.objectContaining({ id: "false", label: "Off", isDefault: false }),
       expect.objectContaining({ id: "true", label: "On", isDefault: true }),
     ]);
+    expect(grok?.thinkingOptions).toBeUndefined();
+    expect(grok?.defaultThinkingOptionId).toBeUndefined();
+  });
+
+  test("keeps session thinking options when the current model's probe fails", async () => {
+    const setSessionConfigOption = vi.fn(async () => {
+      throw new Error("probe rejected model switch");
+    });
+
+    const client = createCursorClient(
+      async () =>
+        ({
+          child: { kill: vi.fn(), exitCode: 0, signalCode: null, once: vi.fn() },
+          connection: {
+            newSession: vi.fn().mockResolvedValue({
+              sessionId: "session-1",
+              models: cursorAvailableModels("claude-haiku-4-5"),
+              configOptions: [
+                cursorModelConfigOption("claude-haiku-4-5"),
+                cursorBooleanThinkingConfigOption(),
+              ],
+            }),
+            setSessionConfigOption,
+          },
+          initialize: { agentCapabilities: {} },
+        }) as unknown as SpawnedACPProcess,
+    );
+
+    const catalog = await client.fetchCatalog({
+      scope: "workspace",
+      cwd: "/tmp/acp-cursor-current-probe-error",
+      force: false,
+    });
+
+    const haiku = catalog.models.find((model) => model.id === "claude-haiku-4-5");
+    const grok = catalog.models.find((model) => model.id === "grok-4.6");
+    expect(haiku?.thinkingOptions).toEqual([
+      expect.objectContaining({ id: "false", label: "Off", isDefault: false }),
+      expect.objectContaining({ id: "true", label: "On", isDefault: true }),
+    ]);
+    expect(grok?.thinkingOptions).toBeUndefined();
+    expect(grok?.defaultThinkingOptionId).toBeUndefined();
   });
 });

@@ -458,11 +458,24 @@ export async function resolveAcpPerModelThinkingCatalog({
           thinkingOptions.find((option) => option.isDefault)?.id ?? undefined,
       });
     } catch (error) {
+      const errorMessage = toDiagnosticErrorMessage(error);
+      if (model.isDefault) {
+        logger.warn(
+          { modelId: model.id, error: errorMessage },
+          `${provider} catalog probe could not refresh thinking options for current model "${model.id}"; keeping session options`,
+        );
+        resolved.push(model);
+        continue;
+      }
       logger.warn(
-        { modelId: model.id, error: toDiagnosticErrorMessage(error) },
-        `${provider} catalog probe could not resolve thinking options for model "${model.id}"; keeping its default options`,
+        { modelId: model.id, error: errorMessage },
+        `${provider} catalog probe could not resolve thinking options for model "${model.id}"; omitting thinking options`,
       );
-      resolved.push(model);
+      resolved.push({
+        ...model,
+        thinkingOptions: undefined,
+        defaultThinkingOptionId: undefined,
+      });
     }
   }
   return resolved;
