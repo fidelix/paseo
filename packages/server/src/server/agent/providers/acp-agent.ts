@@ -418,8 +418,10 @@ export type ACPCatalogModelResolver = (
  *
  * Reuse the single catalog probe session, switch each candidate model, and read back
  * that model's `thought_level` options. Skip when the provider reports one model or no
- * thinking picker. Opt-in via {@link ACPCatalogModelResolver} so a slow ACP does not
- * stall every provider's catalog probe.
+ * model picker. Do not require `thought_level` on `session/new`: Cursor Composer/Auto
+ * defaults omit it, and Grok only exposes effort after a switch. Opt-in via
+ * {@link ACPCatalogModelResolver} so a slow ACP does not stall every provider's catalog
+ * probe.
  */
 export async function resolveAcpPerModelThinkingCatalog({
   connection,
@@ -435,7 +437,7 @@ export async function resolveAcpPerModelThinkingCatalog({
     return models;
   }
   const modelOption = findSelectConfigOption({ configOptions, category: "model" });
-  if (!modelOption || !findSelectConfigOption({ configOptions, category: "thought_level" })) {
+  if (!modelOption) {
     return models;
   }
 

@@ -190,6 +190,20 @@ function cursorModelConfigOption(currentValue: string): SessionConfigOption {
   };
 }
 
+function cursorComposerAndGrokModelConfigOption(currentValue: string): SessionConfigOption {
+  return {
+    id: "model",
+    name: "Model",
+    category: "model",
+    type: "select",
+    currentValue,
+    options: [
+      { value: "composer-2", name: "Composer" },
+      { value: "grok-4.6", name: "Grok 4.6" },
+    ],
+  };
+}
+
 function cursorBooleanThinkingConfigOption(): SessionConfigOption {
   return {
     id: "thinking",
@@ -298,6 +312,68 @@ describe("CursorACPAgentClient per-model thinking options", () => {
       expect.objectContaining({ id: "false", label: "Off", isDefault: false }),
       expect.objectContaining({ id: "true", label: "On", isDefault: true }),
     ]);
+    expect(grok?.thinkingOptions).toEqual([
+      expect.objectContaining({ id: "low", label: "Low", isDefault: false }),
+      expect.objectContaining({ id: "medium", label: "Medium", isDefault: false }),
+      expect.objectContaining({ id: "high", label: "High", isDefault: false }),
+      expect.objectContaining({ id: "xhigh", label: "Extra High", isDefault: true }),
+    ]);
+    expect(grok?.defaultThinkingOptionId).toBe("xhigh");
+  });
+
+  test("probes each model when Composer default has no thought_level so Grok still gets effort options", async () => {
+    const setSessionConfigOption = vi.fn(async ({ value }: { value: string }) => ({
+      configOptions:
+        value === "grok-4.6"
+          ? [cursorComposerAndGrokModelConfigOption(value), cursorGrokThinkingConfigOption()]
+          : [cursorComposerAndGrokModelConfigOption(value)],
+    }));
+
+    const client = createCursorClient(
+      async () =>
+        ({
+          child: { kill: vi.fn(), exitCode: 0, signalCode: null, once: vi.fn() },
+          connection: {
+            newSession: vi.fn().mockResolvedValue({
+              sessionId: "session-1",
+              models: {
+                currentModelId: "composer-2",
+                availableModels: [
+                  { modelId: "composer-2", name: "Composer", description: null },
+                  { modelId: "grok-4.6", name: "Grok 4.6", description: null },
+                ],
+              },
+              configOptions: [cursorComposerAndGrokModelConfigOption("composer-2")],
+            }),
+            setSessionConfigOption,
+          },
+          initialize: { agentCapabilities: {} },
+        }) as unknown as SpawnedACPProcess,
+    );
+
+    const catalog = await client.fetchCatalog({
+      scope: "workspace",
+      cwd: "/tmp/acp-cursor-composer-default",
+      force: false,
+    });
+
+    expect(setSessionConfigOption).toHaveBeenCalledTimes(2);
+    expect(setSessionConfigOption).toHaveBeenNthCalledWith(1, {
+      sessionId: "session-1",
+      configId: "model",
+      value: "composer-2",
+    });
+    expect(setSessionConfigOption).toHaveBeenNthCalledWith(2, {
+      sessionId: "session-1",
+      configId: "model",
+      value: "grok-4.6",
+    });
+
+    const composer = catalog.models.find((model) => model.id === "composer-2");
+    const grok = catalog.models.find((model) => model.id === "grok-4.6");
+
+    expect(composer?.thinkingOptions).toBeUndefined();
+    expect(composer?.defaultThinkingOptionId).toBeUndefined();
     expect(grok?.thinkingOptions).toEqual([
       expect.objectContaining({ id: "low", label: "Low", isDefault: false }),
       expect.objectContaining({ id: "medium", label: "Medium", isDefault: false }),
